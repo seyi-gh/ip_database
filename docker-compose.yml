@@ -24,5 +24,13 @@ services:
       -c checkpoint_completion_target=0.9
       -c wal_buffers=16MB
 
+  redis:
+    image: redis:7-alpine
+    container_name: ip_database_redis
+    restart: unless-stopped
+    ports:
+      - "6344:6379"
+    command: redis-server --save "" --appendonly no
+
 volumes:
   pg_data:
