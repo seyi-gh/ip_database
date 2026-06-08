@@ -1,0 +1,21 @@
+[Unit]
+Description=IP Database API
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=darlene
+WorkingDirectory=/home/darlene/identity/ip_database
+EnvironmentFile=/home/darlene/identity/ip_database/.env
+
+ExecStartPre=/usr/bin/docker-compose up -d --no-recreate
+ExecStartPre=/bin/bash -c 'until /usr/bin/docker exec ip_database_pg pg_isready -q && /usr/bin/docker exec ip_database_redis redis-cli -p 6379 ping | grep -q PONG; do sleep 1; done'
+ExecStart=/home/darlene/identity/ip_database/venv/bin/python3 -B -m uvicorn main:app --host 0.0.0.0 --port 8000
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
