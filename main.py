@@ -3,6 +3,8 @@ import ipaddress
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from psycopg import AsyncConnection
 from dotenv import load_dotenv
 import redis.asyncio as aioredis
@@ -61,6 +63,7 @@ RESERVED_NETWORKS = [
 ]
 
 app = FastAPI(lifespan=lifespan)
+app.mount('/static', StaticFiles(directory='static'), name='static')
 
 
 #? Middleware for rate limiting and helper functions
@@ -135,6 +138,10 @@ async def query_ip(ip: str) -> dict:
 
 
 #? Main routes for production
+@app.get('/')
+async def index():
+  return FileResponse('static/index.html')
+
 @app.get('/health')
 async def health():
   return { 'success': True, 'message': 'The app is working fine' }
