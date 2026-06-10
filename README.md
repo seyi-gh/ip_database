@@ -1,13 +1,12 @@
 # IP Database
 
-REST API to look up geolocation, ASN, and company data for any IPv4 address. Built with FastAPI, PostgreSQL, and Redis — designed to run locally and be exposed publicly through a secure reverse tunnel.
+REST API to look up geolocation, ASN, and company data for any IPv4 address. Built with FastAPI, PostgreSQL, and Redis — runs locally and is exposed publicly through a shared reverse tunnel managed separately.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?style=flat&logo=fastapi&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?style=flat&logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat&logo=redis&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat&logo=docker&logoColor=white)
-![nginx](https://img.shields.io/badge/nginx-1.26-009639?style=flat&logo=nginx&logoColor=white)
 ![pandas](https://img.shields.io/badge/pandas-3.0-150458?style=flat&logo=pandas&logoColor=white)
 ![NumPy](https://img.shields.io/badge/NumPy-2.4-013243?style=flat&logo=numpy&logoColor=white)
 
@@ -15,17 +14,20 @@ REST API to look up geolocation, ASN, and company data for any IPv4 address. Bui
 
 The project is split into three independent layers:
 
-1. **Data pipeline** — raw CSV files from multiple IP databases are merged into a single `database.csv` using pandas and numpy. The merge uses vectorized binary search (`np.searchsorted`) to perform range-overlap joins across datasets with different range boundaries — much faster than row-by-row lookups.
+1. **Data pipeline** — raw CSV files from multiple IP databases are merged into a single `database.csv` using pandas and numpy. The merge uses vectorized binary search (`np.searchsorted`) to perform range-overlap joins across datasets with different range boundaries.
 
 2. **Database** — `database.csv` is loaded into PostgreSQL via `COPY` (bulk import). Each IP range is stored with integer representations of `start_ip` and `end_ip`, which allows the query `WHERE start_int <= ? AND end_int >= ?` to use btree indexes efficiently.
 
-3. **API** — FastAPI serves lookups over the PostgreSQL data. Redis handles per-IP rate limiting using an atomic increment + TTL pattern. The API runs locally and is exposed publicly through an autossh reverse tunnel to a VPS running nginx with HTTPS.
+3. **API** — FastAPI serves lookups over the PostgreSQL data. Redis handles per-IP rate limiting using an atomic increment + TTL pattern.
 
 ```
-client → nginx (VPS, HTTPS :8000) → SSH tunnel → uvicorn (local :8000) → PostgreSQL
-                                                                         ↑
-                                                                       Redis (rate limit)
+client → seyiwb.com/ip (HTTPS)
+  → VPS nginx → autossh tunnel → Caddy:5050 (local router)
+  → localhost:8000 (uvicorn)
+  → PostgreSQL (rate limit via Redis)
 ```
+
+The tunnel and Caddy are shared infrastructure — this service is just one of potentially many apps routed through the same tunnel. See the [tunnel section](#public-exposure-tunnel) for details.
 
 ---
 
@@ -33,7 +35,6 @@ client → nginx (VPS, HTTPS :8000) → SSH tunnel → uvicorn (local :8000) →
 
 - Python 3.11+
 - Docker + Docker Compose
-- autossh (for the tunnel)
 
 ---
 
@@ -42,22 +43,20 @@ client → nginx (VPS, HTTPS :8000) → SSH tunnel → uvicorn (local :8000) →
 ```
 .
 ├── _loader/
-│   ├── data/          # Raw CSV source files
-│   └── loader.py      # Data pipeline: merge all sources → database.csv
+│   ├── data/              # Raw CSV source files
+│   └── loader.py          # Data pipeline: merge all sources → database.csv
 ├── _pg_import/
-│   └── pg_import.py   # Bulk-loads database.csv into PostgreSQL
+│   └── pg_import.py       # Bulk-loads database.csv into PostgreSQL
 ├── static/
-│   └── index.html     # Landing page
-├── main.py            # FastAPI app
-├── exec.sh            # Start the API
-├── loader.sh          # Run the data pipeline
+│   └── index.html         # Landing page
+├── main.py                # FastAPI app
+├── exec.sh                # Start the API
+├── loader.sh              # Run the data pipeline
 ├── import_to_postgres.sh  # Import CSV to PostgreSQL
-├── install_service.sh # Install systemd service for the API
-├── tunnel.sh          # autossh reverse tunnel
-├── tunnel.service     # systemd service for the tunnel
-├── ip-database.service # systemd service for the API
-├── docker-compose.yml # PostgreSQL + Redis
-├── .env.example       # Environment variable template
+├── install_service.sh     # Install systemd service for the API
+├── ip-database.service    # systemd service for the API
+├── docker-compose.yml     # PostgreSQL + Redis
+├── .env.example           # Environment variable template
 └── requirements.txt
 ```
 
@@ -102,7 +101,7 @@ RATE_LIMIT_WINDOW=60
 docker compose up -d
 ```
 
-Wait a few seconds for the services to initialize. PostgreSQL runs on port `5477` and Redis on `6344` — non-standard ports to avoid conflicts when running multiple projects on the same machine.
+PostgreSQL runs on `5477` and Redis on `6344` — non-standard ports to avoid conflicts with other local projects.
 
 ### 4. (Optional) Regenerate the database
 
@@ -112,7 +111,7 @@ Only needed if you want to update or rebuild `database.csv` from the source file
 ./loader.sh
 ```
 
-This merges all data sources using range-overlap joins and overwrites `database.csv` in the project root (~900MB, ~5.6M rows).
+Merges all data sources using range-overlap joins and overwrites `database.csv` (~900MB, ~5.6M rows).
 
 ### 5. Import data into PostgreSQL
 
@@ -120,7 +119,7 @@ This merges all data sources using range-overlap joins and overwrites `database.
 ./import_to_postgres.sh
 ```
 
-Uses PostgreSQL `COPY` for bulk loading — much faster than row-by-row inserts. Creates indexes on `start_int` and `end_int` after import. Takes a few minutes depending on hardware.
+Uses PostgreSQL `COPY` for bulk loading. Creates indexes on `start_int` and `end_int` after import.
 
 ### 6. Start the API
 
@@ -128,21 +127,17 @@ Uses PostgreSQL `COPY` for bulk loading — much faster than row-by-row inserts.
 ./exec.sh
 ```
 
-The API will be available at `http://localhost:8000`. The landing page is at `http://localhost:8000/`.
+Available at `http://localhost:8000`.
 
 ---
 
 ## Running as a system service
 
-To start the API automatically on boot:
-
 ```bash
 ./install_service.sh
 ```
 
-This installs and enables `ip-database.service`, which starts Docker containers, waits for them to be healthy, then launches uvicorn.
-
-To check status or logs:
+Installs `ip-database.service`, which starts Docker containers, waits for them to be healthy, then launches uvicorn.
 
 ```bash
 sudo systemctl status ip-database
@@ -151,23 +146,30 @@ sudo journalctl -u ip-database -f
 
 ---
 
-## Reverse tunnel (public exposure)
+## Public exposure (tunnel)
 
-The API runs locally and is exposed publicly via an autossh reverse tunnel. The tunnel forwards `VPS:5050 → localhost:8000`, and nginx on the VPS proxies `seyiwb.com:8000 → 127.0.0.1:5050` over HTTPS.
+This service is exposed publicly via a shared autossh reverse tunnel that lives at `~/identity/tunnel.sh` — not in this repo. The tunnel connects the local machine to the VPS at `seyiwb.com` and is managed independently of any individual service.
 
-Start the tunnel manually:
-
-```bash
-./tunnel.sh
+```
+~/identity/tunnel.sh         # autossh -R 9000:localhost:5050 littleshit@seyiwb.com
+/etc/systemd/system/seyiwb-reverse-tunnel.service
 ```
 
-Or install it as a service to start on boot:
+Caddy runs locally on `:5050` and routes traffic by path. To expose this service, the Caddyfile entry is:
 
-```bash
-sudo cp tunnel.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now tunnel
 ```
+:5050 {
+    handle /ip {
+        rewrite * /
+        reverse_proxy localhost:8000
+    }
+    handle /ip/* {
+        reverse_proxy localhost:8000
+    }
+}
+```
+
+To add a new service at a different path, add another `handle` block pointing to its local port — the tunnel and VPS nginx don't change.
 
 ---
 
@@ -176,10 +178,8 @@ sudo systemctl enable --now tunnel
 ### Landing page
 
 ```
-GET /
+GET /ip  →  seyiwb.com/ip
 ```
-
-Opens the interactive landing page with a live IP lookup demo.
 
 ### Look up your own IP
 
@@ -188,10 +188,10 @@ GET /ip
 ```
 
 ```bash
-curl http://localhost:8000/ip
+curl https://seyiwb.com/ip
 ```
 
-Automatically detects the client IP from the request. When behind a proxy, reads `X-Forwarded-For`.
+Detects the client IP from the request. When behind a proxy, reads `X-Forwarded-For`.
 
 ### Look up a specific IP
 
@@ -200,7 +200,7 @@ GET /ip/{ip}
 ```
 
 ```bash
-curl http://localhost:8000/ip/8.8.8.8
+curl https://seyiwb.com/ip/8.8.8.8
 ```
 
 ```json
@@ -239,7 +239,7 @@ GET /health
 
 Requests are limited per client IP using Redis. Defaults: 60 requests per 60 seconds. Configurable via `.env`.
 
-When the limit is exceeded the API returns `429 Too Many Requests` with a `Retry-After` header indicating how many seconds to wait.
+Returns `429 Too Many Requests` with a `Retry-After` header when exceeded.
 
 ### Blocked IPs
 
@@ -253,8 +253,6 @@ Private, reserved, and non-routable addresses are rejected with `400 Bad Request
 
 ### Security headers
 
-All responses include:
-
 | Header | Value |
 |---|---|
 | `X-Content-Type-Options` | `nosniff` |
@@ -267,7 +265,7 @@ All responses include:
 
 ## Data sources
 
-The database is built by merging 8 source files using range-overlap joins. dbip takes priority for city-level data, with geolite2 as fallback. ASN and country data is enriched from separate sources that may use different range boundaries.
+The database is built by merging 8 source files using range-overlap joins. dbip takes priority for city-level data, with geolite2 as fallback.
 
 | File | Content |
 |---|---|
@@ -280,7 +278,7 @@ The database is built by merging 8 source files using range-overlap joins. dbip 
 | `webex.com_IP_Range_WL.csv` | Webex IP ranges |
 | `microsoft_ip_range_20240129.txt` | Microsoft IP ranges |
 
-> **Note:** Free geolocation databases have variable accuracy by region. Coverage is generally better for North America and Europe than for Latin America, Africa, and parts of Asia.
+> Free geolocation databases have variable accuracy by region. Coverage is generally better for North America and Europe.
 
 ---
 
@@ -292,6 +290,7 @@ The database is built by merging 8 source files using range-overlap joins. dbip 
 | Database | PostgreSQL 17 |
 | Cache / rate limit | Redis 7 |
 | Data pipeline | pandas + numpy |
-| Tunnel | autossh |
-| Reverse proxy | nginx + Let's Encrypt |
+| Reverse proxy (local) | Caddy |
+| Reverse proxy (VPS) | nginx + Let's Encrypt |
+| Tunnel | autossh (shared, `~/identity/tunnel.sh`) |
 | Process management | systemd |
