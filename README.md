@@ -184,11 +184,11 @@ GET /ip  →  seyiwb.com/ip
 ### Look up your own IP
 
 ```
-GET /ip
+GET /ip/me
 ```
 
 ```bash
-curl https://seyiwb.com/ip
+curl https://seyiwb.com/ip/me
 ```
 
 Detects the client IP from the request. When behind a proxy, reads `X-Forwarded-For`.

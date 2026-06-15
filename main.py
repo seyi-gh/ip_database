@@ -146,7 +146,7 @@ async def index():
 async def health():
   return { 'success': True, 'message': 'The app is working fine' }
 
-@app.get('/ip')
+@app.get('/ip/me')
 async def lookup_self(request: Request):
   ip = client_ip(request)
   return await query_ip(ip)
