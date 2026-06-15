@@ -2,9 +2,9 @@ import os
 import ipaddress
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from psycopg import AsyncConnection
 from dotenv import load_dotenv
 import redis.asyncio as aioredis
@@ -40,7 +40,6 @@ async def lifespan(app: FastAPI):
 
 SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer',
   'X-Permitted-Cross-Domain-Policies': 'none',
   'Cache-Control': 'no-store',
@@ -63,12 +62,21 @@ RESERVED_NETWORKS = [
 ]
 
 app = FastAPI(lifespan=lifespan)
-app.mount('/static', StaticFiles(directory='static'), name='static')
+app.add_middleware(
+  CORSMiddleware,
+  allow_origins=['*'],
+  allow_methods=['GET'],
+  allow_headers=['*'],
+)
+app.mount('/static', StaticFiles(directory=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')), name='static')
 
 
 #? Middleware for rate limiting and helper functions
 def client_ip(request: Request) -> str:
-  return request.headers.get('X-Forwarded-For', request.client.host).split(',')[0].strip()
+  return (
+    request.headers.get('X-Real-IP') or
+    request.headers.get('X-Forwarded-For', request.client.host).split(',')[0].strip()
+  )
 
 def assert_public_ip(ip: str):
   try:
@@ -138,11 +146,14 @@ async def query_ip(ip: str) -> dict:
 
 
 #? Main routes for production
-@app.get('/')
-async def index():
-  return FileResponse('static/index.html')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-@app.get('/health')
+@app.get('/')
+@app.get('/ip')
+async def index():
+  return FileResponse(os.path.join(BASE_DIR, 'static', 'index.html'))
+
+@app.get('/ip/health')
 async def health():
   return { 'success': True, 'message': 'The app is working fine' }
 

@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #051424;
+  --color-surface-container-low: #0d1c2d;
+  --color-surface-container-high: #1c2b3c;
+  --color-surface-container-highest: #273647;
+  --color-surface-container-lowest: #010f1f;
+  --color-surface-variant: #273647;
+  --color-background: #051424;
+  --color-on-surface: #d4e4fa;
+  --color-on-surface-variant: #c8c4d7;
+  --color-outline-variant: #474555;
+  --color-primary: #c7bfff;
+  --color-on-primary: #2a009f;
+  --color-secondary: #5adace;
+  --color-on-secondary: #003733;
+  --color-secondary-container: #01a89d;
+  --color-tertiary: #ffb875;
+  --color-on-tertiary-container: #412200;
+}
+
+@utility font-code-md {
+  font-family: "JetBrains Mono", monospace;
+}
+@utility font-display-lg {
+  font-family: "Geist", sans-serif;
+}
+@utility font-body-lg {
+  font-family: "Geist", sans-serif;
+}
+@utility font-headline-lg {
+  font-family: "Geist", sans-serif;
+}
+@utility font-label-sm {
+  font-family: "JetBrains Mono", monospace;
+}
+@utility font-body-md {
+  font-family: "Geist", sans-serif;
+}
+@utility font-headline-md {
+  font-family: "Geist", sans-serif;
+}
+
+@utility text-code-md {
+  font-size: 14px;
+  line-height: 1.7;
+  font-weight: 400;
+}
+@utility text-display-lg {
+  font-size: 48px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+@utility text-body-lg {
+  font-size: 16px;
+  line-height: 1.6;
+  font-weight: 400;
+}
+@utility text-headline-lg {
+  font-size: 32px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+@utility text-label-sm {
+  font-size: 12px;
+  line-height: 1.0;
+  font-weight: 500;
+}
+@utility text-body-md {
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+@utility text-headline-md {
+  font-size: 24px;
+  line-height: 1.3;
+  font-weight: 600;
+}
